@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Uncuffed Design – IR35 Freelance Rate Calculator (London 2025)</title>
+  <style>
+    :root{--bg:#0b0b0b;--card:#131313;--muted:#9aa0a6;--text:#f5f5f5;--brand:#ffffff;--accent:#00d4ff;--border:#262626}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji"}
+    .wrap{max-width:960px;margin:40px auto;padding:24px}
+    .title{font-size:28px;font-weight:800;margin:0 0 8px;letter-spacing:0.2px}
+    .subtitle{color:var(--muted);margin:0 0 24px;font-size:14px}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:18px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+    .card-inner{padding:20px}
+    .grid{display:grid;gap:16px}
+    @media(min-width:720px){.grid{grid-template-columns:1.2fr 1.2fr 1fr}}
+    label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+    select,input{width:100%;background:#0f0f0f;border:1px solid var(--border);color:var(--text);border-radius:12px;padding:12px 14px;font-size:14px;outline:none}
+    input[type=number]{appearance:textfield}
+    input::-webkit-outer-spin-button,input::-webkit-inner-spin-button{appearance:none;margin:0}
+    .row{display:grid;gap:16px;grid-template-columns:1fr 1fr 1fr}
+    .row .box{background:#0f0f0f;border:1px dashed var(--border);border-radius:12px;padding:14px}
+    .box h4{margin:0 0 6px;font-size:12px;color:var(--muted);font-weight:600}
+    .big{font-size:22px;font-weight:800}
+    .muted{color:var(--muted)}
+    .pill{display:inline-flex;gap:8px;align-items:center;padding:8px 12px;border:1px solid var(--border);border-radius:999px;font-size:12px;color:var(--muted)}
+    .footer{display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-top:16px}
+    .btn{background:linear-gradient(180deg,#1d1d1d,#0f0f0f);border:1px solid var(--border);padding:12px 16px;border-radius:12px;color:#fff;font-weight:700;cursor:pointer}
+    .btn:hover{filter:brightness(1.05)}
+    .note{font-size:12px;color:var(--muted);margin-top:10px}
+    .summary{margin-top:18px;line-height:1.5}
+    .hl{background:linear-gradient(90deg,rgba(0,212,255,.14),rgba(0,212,255,0));padding:2px 4px;border-radius:6px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1 class="title">Freelance Rate Calculator</h1>
+    <p class="subtitle">London-only day rates with IR35 split. Interactive widget for Notion embeds. Rates load live from your Google Sheet.</p>
+
+    <div class="card">
+      <div class="card-inner">
+        <div class="grid" style="margin-bottom:16px">
+          <div>
+            <label>Role</label>
+            <select id="role"></select>
+          </div>
+          <div>
+            <label>Level</label>
+            <select id="level"></select>
+          </div>
+          <div>
+            <label>IR35</label>
+            <select id="ir35">
+              <option value="Inside">Inside</option>
+              <option value="Outside">Outside</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label>Project days</label>
+            <input id="days" type="number" min="1" value="5" />
+          </div>
+          <div>
+            <label>Contingency %</label>
+            <input id="cont" type="number" min="0" value="2" />
+          </div>
+          <div style="display:flex;align-items:flex-end;gap:8px">
+            <button class="btn" id="reset">Reset</button>
+            <span class="pill">Currency: £ • Week=5d • Month=22d</span>
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:16px">
+          <div class="box">
+            <h4>Low (£/day)</h4>
+            <div class="big" id="lowDay">–</div>
+          </div>
+          <div class="box">
+            <h4>Mid (£/day)</h4>
+            <div class="big" id="midDay">–</div>
+          </div>
+          <div class="box">
+            <h4>High (£/day)</h4>
+            <div class="big" id="highDay">–</div>
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:10px">
+          <div class="box">
+            <h4>Total (Low)</h4>
+            <div class="big" id="lowTotal">–</div>
+          </div>
+          <div class="box">
+            <h4>Total (Mid)</h4>
+            <div class="big" id="midTotal">–</div>
+          </div>
+          <div class="box">
+            <h4>Total (High)</h4>
+            <div class="big" id="highTotal">–</div>
+          </div>
+        </div>
+
+        <div class="summary" id="summary"></div>
+        <div class="note">Note: Rates are <span class="hl">London-specific</span>. Update the data in your Google Sheet; this widget refreshes on page load.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ===== CSV endpoint generated from your Google Sheet =====
+    const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRu08toAtP0JCVWHJzsDj4ksz4C9tTH0K6Vhtz553N3xdoFD1aLLi3ZmuEtkhpYV174uXVkyftQ411h/pub?gid=375229272&single=true&output=csv";
+
+    // ===== Utils =====
+    const £ = (n) => n.toLocaleString('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 });
+
+    function parseCSV(text){
+      const lines = text.split(/\r?\n/).filter(Boolean);
+      if(!lines.length) return [];
+      const headers = lines[0].split(',').map(h=>h.trim());
+      return lines.slice(1).map(line=>{
+        const cells = line.split(',');
+        const obj = {};
+        headers.forEach((h,i)=> obj[h] = (cells[i]||"").trim());
+        return obj;
+      });
+    }
+
+    // ===== State =====
+    let rows = [];
+
+    const els = {
+      role: document.getElementById('role'),
+      level: document.getElementById('level'),
+      ir35: document.getElementById('ir35'),
+      days: document.getElementById('days'),
+      cont: document.getElementById('cont'),
+      lowDay: document.getElementById('lowDay'),
+      midDay: document.getElementById('midDay'),
+      highDay: document.getElementById('highDay'),
+      lowTotal: document.getElementById('lowTotal'),
+      midTotal: document.getElementById('midTotal'),
+      highTotal: document.getElementById('highTotal'),
+      summary: document.getElementById('summary'),
+      reset: document.getElementById('reset')
+    };
+
+    function unique(list){ return [...new Set(list.filter(Boolean))]; }
+
+    function populateSelectors(){
+      const roles = unique(rows.map(r=>r.Role));
+      els.role.innerHTML = roles.map(r=>`<option>${r}</option>`).join('');
+      updateLevels();
+    }
+
+    function updateLevels(){
+      const levels = unique(rows.filter(r=>r.Role === els.role.value).map(r=>r.Level));
+      els.level.innerHTML = levels.map(l=>`<option>${l}</option>`).join('');
+      updateIR35();
+    }
+
+    function updateIR35(){
+      const options = unique(rows.filter(r=>r.Role===els.role.value && r.Level===els.level.value).map(r=>r.IR35));
+      els.ir35.innerHTML = options.map(o=>`<option ${o===els.ir35.value? 'selected':''}>${o}</option>`).join('');
+      compute();
+    }
+
+    function findRate(){
+      return rows.find(r => r.Role===els.role.value && r.Level===els.level.value && r.IR35===els.ir35.value);
+    }
+
+    function compute(){
+      const rate = findRate();
+      if(!rate){
+        els.lowDay.textContent = els.midDay.textContent = els.highDay.textContent = '–';
+        els.lowTotal.textContent = els.midTotal.textContent = els.highTotal.textContent = '–';
+        els.summary.textContent = '';
+        return;
+      }
+      const low = Number(rate["Low (£/day)"] || rate.Low || rate.low || 0);
+      const mid = Number(rate["Mid (£/day)"] || rate.Mid || rate.mid || 0);
+      const high = Number(rate["High (£/day)"] || rate.High || rate.high || 0);
+      const days = Math.max(1, Number(els.days.value||0));
+      const cont = Math.max(0, Number(els.cont.value||0))/100;
+
+      els.lowDay.textContent = £(low);
+      els.midDay.textContent = £(mid);
+      els.highDay.textContent = £(high);
+
+      const withCont = (n) => n * days * (1+cont);
+      els.lowTotal.textContent = £(withCont(low));
+      els.midTotal.textContent = £(withCont(mid));
+      els.highTotal.textContent = £(withCont(high));
+
+      els.summary.innerHTML = `
+        <div class="pill" style="margin-bottom:8px">Weekly (5d): <strong style="margin-left:6px">${£(low*5)} – ${£(high*5)}</strong></div>
+        <div class="pill" style="margin-bottom:8px">Monthly (22d): <strong style="margin-left:6px">${£(low*22)} – ${£(high*22)}</strong></div>
+        <div class="muted">Quote summary:</div>
+        <div><strong>${els.level.value} ${els.role.value}</strong> (${els.ir35.value}): ${£(low)}–${£(high)}/day × ${days} days + ${Math.round(cont*100)}% contingency → Total ${£(withCont(low))}–${£(withCont(high))}</div>
+      `;
+    }
+
+    async function boot(){
+      try{
+        const res = await fetch(CSV_URL);
+        const text = await res.text();
+        rows = parseCSV(text);
+        populateSelectors();
+        compute();
+      }catch(e){
+        console.error('Failed to load CSV', e);
+        rows = [];
+      }
+    }
+
+    // events
+    ['role','level','ir35','days','cont'].forEach(id=>{
+      els[id].addEventListener('change', ()=>{
+        if(id==='role') return updateLevels();
+        if(id==='level') return updateIR35();
+        compute();
+      });
+    });
+    els.reset.addEventListener('click', ()=>{
+      els.days.value = 5; els.cont.value = 2; populateSelectors(); compute();
+    });
+
+    boot();
+  </script>
+</body>
+</html>
